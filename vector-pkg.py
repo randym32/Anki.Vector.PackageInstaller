@@ -18,6 +18,7 @@ import ConfigParser
 import time
 import hashlib
 import sys
+import shutil
 
 '''This file will be looked up under OPKG_DIR/conf'''
 OPKG_CONF_FILE='/etc/vpkg/conf/vpkg.env'
@@ -27,10 +28,27 @@ META_FILE_LATEST='Latest.meta'
 EXTRA_PARAM_DELIM=','
 EXTRA_PARAM_KEY_VAL_SEP='='
 
+'''Logs an error'''
 def loge(msg):
     "Send error message to stderr"
     print(msg, file=sys.stderr)
     sys.stderr.flush()
+
+'''A helper to create all of the directories along a path'''
+def makedirs(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+'''A helper to remove a directory tree that is no longer needed'''
+def rmtree(path):
+    if os.path.exists(path):
+        shutil.rmtree(path, ignore_errors=True) 
+
+'''This reads the .ini configuration file.  
+   This modifies it to preserve case of the filesystem'''
+class PkgConfigParser(ConfigParser.ConfigParser):
+    def optionxform(self, optionstr):
+        return optionstr
     
 ''' Classes '''
 
@@ -44,7 +62,7 @@ class EnvConfig():
         self.config_file=config_file
 
     def loadConfigFile(self):
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = PkgConfigParser()
         if os.path.isfile(self.config_file) and os.access(self.config_file, os.R_OK):
             self.conf.read(self.config_file)
 
@@ -65,15 +83,14 @@ class EnvConfig():
 def get_manifest(manifest_file):
     "Returns config parsed from INI file in filelike object"
     config = None
-    with open(manifest_file, 'r') as stream:
-        try:
-            config = ConfigParser.ConfigParser();
-            config.readfp(stream);
+    try:
+        config = PkgConfigParser();
+        config.read(manifest_file);
 
-        except Exception as exc:
-            loge ("Error: Problem loading manifest file "+manifest_file)
-            print(exc)
-            return
+    except Exception as exc:
+        loge ("Error: Problem loading manifest file "+manifest_file)
+        print(exc)
+        return
 
     if not config.has_option("META", 'rel_num'):
         loge ("Error: rel_num not found in "+manifest_file)
@@ -122,7 +139,11 @@ class Pkg():
         pkg_name_rel_num = pkg_name_rel_num.replace('.tgz', '')
         pkg_name_rel_num = pkg_name_rel_num.replace('.vpkg', '')
         tarball_name = pkg_name_rel_num + '.vpkg'
-        pkg_name = re.split('-', pkg_name_rel_num)[0]
+        m = re.search('^(.+)-([\\d.]+|[\\d.]+[\\d.]+)$', pkg_name_rel_num)
+        if m:
+            pkg_name = m.group(1)
+        else:
+            pkg_name = pkg_name_rel_num
 
         return pkg_name,pkg_name_rel_num,tarball_name
 
@@ -136,15 +157,16 @@ class Pkg():
          name-rel_num-rel_ts.vpkg - release
          name-rel_num-rel_ts.tgz - release
         '''
-        m = re.search('.+?-(.+?)-(.+).(tgz|vpkg)', tarball_name)
+        m = re.search('.+?-([\\d.]+?)-([\\d.]+).(tgz|vpkg)', tarball_name)
         if m:
             rel_num = m.group(1)
             rel_ts = m.group(2)
+        else:
+            m = re.search('.+?-([\\d.]+?).(tgz|vpkg)', tarball_name)
+            if m:
+                rel_num = m.group(1)
 
         return rel_num,rel_ts
-
-    def setManifest(self,f):
-        self.manifest_path=f
 
     def setRelNum(self,rel_num):
         self.rel_num=rel_num
@@ -194,7 +216,7 @@ class Pkg():
         meta_dir=deploy_inst.opkg_dir + "/meta/" + self.name
         meta_file_previous = meta_dir + "/" + META_FILE_PREVIOUS
         meta_file_latest = meta_dir + "/" + META_FILE_LATEST
-        runCmd("mkdir -p "+meta_dir)
+        makedirs(meta_dir)
 
         # move the uninstall package to the folder
         if not execOSCommand("mv -f " + uninstall + " " + meta_dir):
@@ -228,14 +250,16 @@ class Pkg():
         self.manifest = get_manifest(self.manifest_path)
 
 
-        runCmd("rm -rf "+self.stage_dir)
-        runCmd("mkdir -p " + self.stage_dir)
+        rmtree(self.stage_dir) 
+        makedirs(self.stage_dir)
         os.chdir(self.stage_dir)
 
         '''Copy manifest to the deploy folder in archive'''
-        runCmd('mkdir -p ' + self.deploy_dir)
-        if not execOSCommand('cp ' + self.manifest_path + ' ' + self.deploy_dir + '/'):
-            loge ("Error: Problem copying package manifest.")
+        makedirs(self.deploy_dir)
+        try:
+            shutil.copy(self.manifest_path, self.deploy_dir)
+        except  Exception as err:
+            loge ("Error: Problem copying package manifest. " + str(err))
             return False
 
         '''Stage files content for archiving'''
@@ -256,18 +280,18 @@ class Pkg():
             loge ("Error: Couldn't create package " + self.tarball_name)
             return False
         os.chdir(self.build_root)
-        rc = runCmd('mv ' + self.stage_dir + '/' + self.tarball_name + ' ./')
-        if rc == 0:
-            runCmd("rm -rf " + self.stage_dir)
+        try:
+            shutil.move(self.stage_dir + '/' + self.tarball_name, './')
+            rmtree(self.stage_dir) 
             print ("Package " + self.tarball_name + " has been created.")
-        else:
-            loge ("Error: Package " + self.tarball_name + " couldn't be created.")
+        except  Exception as err:
+            loge ("Error: Package " + self.tarball_name + " couldn't be created. "+str(err))
             return False
 
     '''Creates an archive snapshotting the current state.  This is used to to
        later undoan installation.'''
     def createUndoManifest(self,undoManifestPath):
-        undoConfig = ConfigParser.ConfigParser()
+        undoConfig = PkgConfigParser()
         #copy the key pieces from the manifest
         self.manifest = get_manifest(self.manifest_path)
         # copy the manifest information
@@ -313,14 +337,23 @@ class Pkg():
         os.chdir(self.stage_dir)
         if os.path.isdir(src):
             '''skip build folder silently, but individual files can still be added.'''
-            if runCmd("mkdir -p " + tgt) != 0: return False
-            if runCmd("cp -r " + src + '/. ' + tgt + '/') != 0: return False
+            try:
+                makedirs(tgt)
+                shutil.copy(src, tgt)
+            except:
+                return False
         else:
             tgt_dir = os.path.dirname(tgt)
             if tgt_dir != '':
-                if runCmd("mkdir -p " + tgt_dir) != 0: return False
+                try:
+                    makedirs(tgt_dir)
+                except:
+                    return False
             if os.path.exists(src):
-                if runCmd("cp " + src + ' ' + tgt) != 0: return False
+                try:
+                    shutil.copy(src, tgt)
+                except  Exception as err:
+                    return False
 
         return True
 
@@ -333,8 +366,10 @@ class Pkg():
 
         '''Extract the tarball in stage_dir, to prepare for deploy playbook to  execute steps'''
         stage_dir=os.path.join(deploy_inst.stage_dir,self.name,deploy_inst.deploy_ts)
-        if not execOSCommand('mkdir -p ' + stage_dir):
-                return
+        try:
+            makedirs(stage_dir)
+        except:
+            return
         os.chdir(stage_dir)
 
         if not execOSCommand('tar xzf ' + tarball_path):
@@ -344,12 +379,12 @@ class Pkg():
 
         '''Resolve manifest, and files defined under templates and replaces with actual values 
         defined for this specific installation.'''
-        manifest_path=os.path.join(os.getcwd(),os.path.join(".install",self.manifest_file))
-        tmpl_inst=Tmpl(manifest_path)
+        self.manifest_path=os.path.join(os.getcwd(),os.path.join(".install",self.manifest_file))
+        tmpl_inst=Tmpl(self.manifest_path)
         if not tmpl_inst.resolveVars(deploy_inst.getVars()):
             loge ("Error: Problem resolving "+self.manifest_file)
             return False
-        pkg_manifest=get_manifest(manifest_path)
+        pkg_manifest=get_manifest(self.manifest_path)
         
         '''Snapshot the files that will be changed to allow undoing'''
         if not deploy_inst.uninstall:
@@ -514,10 +549,10 @@ class opkg():
                 k, v = re.split(EXTRA_PARAM_KEY_VAL_SEP,extra_var)
                 self.extra_vars[k] = v
 
-        if self.arg_dict.has_key('help'):
+        if 'help' in self.arg_dict:
             self.printHelp()
             Exit(0)
-        elif self.arg_dict.has_key('version'):
+        elif 'version' in self.arg_dict:
             self.printVersion()
             Exit(0)
 
@@ -547,7 +582,7 @@ class opkg():
         self.configs['basic']={'opkg_dir': '/etc/vpkg','stage_dir':'/tmp/vpkg-staging',
                                         'deploy_history_file':'/var/log/deploy_history.log',
                                         'install_root': '/tmp/vpkg'};
-        Config = ConfigParser.ConfigParser()
+        Config = PkgConfigParser()
         Config.read(self.conf_file)
         sections=Config.sections()
         for section in sections:
@@ -579,15 +614,18 @@ class opkg():
     def main(self):
 
         if self.action=='create':
-            self.extra_vars['ACTION'] = 'create'
+            self.extra_vars['OPKG_ACTION'] = 'create'
             for pkg in self.pkgs:
                 pkg_inst=Pkg(pkg)
                 pkg_inst.create()
 
         elif self.action=='list':
-            self.extra_vars['ACTION'] = 'list'
+            self.extra_vars['OPKG_ACTION'] = 'list'
             if None == self.pkgs:
-                self.pkgs = os.listdir(os.path.join(self.configs['basic']['opkg_dir'], 'meta'))
+                path = os.path.join(self.configs['basic']['opkg_dir'], 'meta')
+                self.pkgs = []
+                if os.path.exists(path):
+                    self.pkgs = os.listdir(path)
             
             for pkg in self.pkgs:
                 pkg_name, pkg_name_rel_num, tarball_name = Pkg.parseName(pkg)
@@ -599,17 +637,25 @@ class opkg():
                 print (pkg_name+'-'+pkg_meta['latest_install']['pkg_rel_num'])
 
         elif self.action=='install':
-            self.extra_vars['ACTION'] = 'install'
+            self.extra_vars['OPKG_ACTION'] = 'install'
             deploy_inst=Deploy(self.configs,self.arg_dict,self.extra_vars)
+            if None == self.pkgs:
+                self.pkgs = []
+                loge("Error: no packages were given to install")
+
             for pkg in self.pkgs:
                 pkg_name,pkg_name_rel_num,tarball_name =Pkg.parseName(pkg)
+                print("installing "+pkg_name)
 
                 '''Start installation of the package once the tarball is copied to staging location.'''
                 deploy_inst.installPackage(pkg_name,tarball_name,pkg_name_rel_num,os.path.join(os.getcwd(),pkg))
         elif self.action=='uninstall':
-            self.extra_vars['ACTION'] = 'uninstall'
+            self.extra_vars['OPKG_ACTION'] = 'uninstall'
             self.arg_dict['uninstall']=''
             deploy_inst=Deploy(self.configs,self.arg_dict,self.extra_vars)
+            if self.pkgs is None:
+                self.pkgs = []
+
             for pkg in self.pkgs:
                 # First, look up the package to undo it
                 pkg_name,pkg_name_rel_num,tarball_name =Pkg.parseName(pkg)
@@ -626,7 +672,7 @@ class opkg():
                 deploy_inst.installPackage(pkg_name,os.path.join(pkg_meta['dir'],tarball_name),pkg_name_rel_num,os.path.join(pkg_meta['dir'],undo_package_name))
 
                 # finally nuke the old folder
-                runCmd("rm -rf "+pkg_meta['dir'])
+                rmtree(pkg_meta['dir']) 
         else:
             print ("Unsupported action: "+self.action)
 
@@ -655,7 +701,13 @@ class Deploy():
         self.extra_vars['OPKG_TS'] = None
         self.extra_vars['OPKG_ACTION'] = None
 
-        if not execOSCommand('mkdir -p ' + self.history_dir): return
+        try:
+            makedirs(self.history_dir)
+
+        except Exception as err:
+            loge("Error: could not create history directory "+str(err))
+            return
+        #if not execOSCommand('mkdir -p ' + self.history_dir): return
 
     '''Returns the extra-vars specified from commandline and the OPKG_ vars'''
     def getVars(self):
@@ -682,11 +734,11 @@ class Deploy():
         pkg.setEnvConfig(self.env_conf)
         pkg.loadMeta()
         if self.deploy_force or not pkg.isInstalled(tarball_path):
-            pkg.install(tarball_path,self,pkg_name)
+            if not pkg.install(tarball_path,self,pkg_name):
+                loge ("Error installing")
         else:
             print ("Info: This revision of package "+pkg_name+" is already installed at "+self.install_root+'/installs/'+pkg.getMeta()['latest_install']['deploy_ts']+'/'+pkg_name)
             print ("Info: Use --force option to override.")
-
         return True
 
 '''Utility classes '''

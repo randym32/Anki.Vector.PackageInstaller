@@ -1,6 +1,6 @@
 # Vector Package Project
 
-Vector Package is an open-source project to develop a platform independant packaging and deployment tool.
+Vector Package is an open-source, platform independent packaging and deployment tool intended for use primarily on Vector.
 
 # Basic Features 
 
@@ -22,7 +22,7 @@ To uninstall a previously installed package:
 
 ```$ vector-pkg.py uninstall --pkg=myapp```
 
-# Advantages of Vector Package
+# Advantages of Vector Package Installer
 
 - extremely simple packaging system that uses an open archive format, tarball.
 - vector-pkg.py packages are flexible enough to be installed in environments with varied configuration.
@@ -128,15 +128,11 @@ These variables are available in the runtime environment so deployment and runti
 
 #### System Defined Variables
 The package tool makes these variables available for templates and scripts:
-- OPKG_ROOT_DIR: The directory where package tool specific files and meta data are maintained. Default: /etc/vector-pkg.py
+
 - OPKG_NAME: Name of package being deployed or run.
 - OPKG_REL_NUM: Release number of the package being deployed or run.
 - OPKG_ACTION: The action being done using package tool, like install, start etc.
-- OPKG_INSTALL_STEP: Package installation process has multiple steps like pre_deploy,targets,symlinks,post_deploy etc. These options correspond to the deployment options specified in the manifest.
-- OPKG_STAGE_DIR: The location where a package is extracted prior to starting the deployment steps, and, it will be available begining the step "targets".
-- OPKG_DEPLOY_TS: A timestamp used to track a deployment session across packages.
-- OPKG_META_LATEST: Content of existing Latest.meta for the package.
-- OPKG_META_PREVIOUS: Content of existing Previous.meta for the package.
+- OPKG_TS: A timestamp used to track a deployment session across packages.
 
 #### Externally Provided Variables
 To make these variable available to templates and scripts, they must be defined in the manifest as in the following example:
