@@ -397,16 +397,6 @@ class Pkg():
             runCmd("rm " + undo_manifest_path)
             os.chdir(stage_dir)
 
-        '''Run pre-deploy steps. 
-        These are run immediately after the tarball is extracted in stage_dir
-        '''
-        if pkg_manifest.has_section('pre_deploy'):
-            for index in pkg_manifest.options('pre_deploy'):
-                step=pkg_manifest.get('pre_deploy',index)
-                if not execOSCommand(step):
-                    loge ("Error: Problem executing the following step in pre_deploy phase: "+step)
-                    return False
-
         '''copy targets entries to install_root'''
         # Only uses well-defined folders to prevent too much damage
         for base_path in ['anki','etc','home', 'usr', 'var']:
@@ -468,14 +458,7 @@ class Pkg():
                     loge ("Error: Problem setting permissions on " + fpath+'. Command: '+cmd)
                     return False
 
-        '''Post-deploy steps'''
-        if pkg_manifest.has_section('post_deploy'):
-            for index in pkg_manifest.options('post_deploy'):
-                step=pkg_manifest.get('post_deploy',index)
-                if not execOSCommand(step):
-                    loge ("Error: Problem executing the following step in post_deploy phase: " + step)
-                    return False
-        
+       
         ''' Register the installation and the uninstall package'''
         if not deploy_inst.uninstall:
             self.registerInstall(deploy_inst, os.path.join(deploy_inst.stage_dir, undo_pkg.tarball_name))
