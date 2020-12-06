@@ -64,11 +64,6 @@ MYAPP_ENV1= "sample env"
 DB_NAME= myapp_db
 DC_NAME= "{{ DC_NAME }}"
 
-#Deployment Playbook
-[pre_deploy]
-0= Going to deploy {{ vector-pkg.py_NAME }} v{{ vector-pkg.py_REL_NUM }}
-1= mkdir -p /etc/myapp
-
 #The target paths are relative to vector-pkg.py_DEPLOY_DIR unless absolute path is specified.
 [templates]
 0=/Anki/greeting/hi.txt
@@ -85,10 +80,6 @@ apps/conf/server.conf= HTTP_PORT=80: HTTP_PORT=9090
 #Format: PATH: chown_input chmod_input
 [permissions]
 apps= root:root 0444
-
-#Paths have to be fully qualified with vector-pkg.py_INSTALL_ROOT, vector-pkg.py_DEPLOY_DIR etc, if needed.
-[post_deploy]
-0=cat {{ vector-pkg.py_DEPLOY_DIR }}/greeting/hi.txt
 
 ```
 
@@ -159,18 +150,6 @@ $ vector-pkg.py install --pkg=pkg1-latest,pkg2-latest,pkg3-1.2.3
 In this case, latest versions of pk1 and pkg2 and pkg3-1.2.3 will be deployed. 
 
 
-
-### pre_deploy
-Multiple steps can be specified pre-installation steps as below:
-
-```
-[pre_deploy]
-0=echo Going to deploy {{ OPKG_NAME }} v{{ OPKG_REL_NUM }}
-1=mkdir -p /etc/myapp
- ```
- The package is extracted and the variables specified in the manifest are resolved at this stage. But rest of the installation process is not started so a pre-deploy step should not rely on scripts the package with template variables and tokens.
- 
-
 ### templates
 
 This is a powerful option to make environment specific changes to the generic application configuration files maintained source code control system, as in the following example:
@@ -216,13 +195,6 @@ In the example above, the changes will be same as that done by the following com
 ```
 $ chown -R root:root OPKG_DEPLOY_DIR/apps
 $ chmod -R 0444 OPKG_DEPLOY_DIR/apps
-```
-### post_deploy
-Multiple post-deployment steps can be specified under this section. The relative paths are not supported in this step and all the paths should be fully qualified as in the following example.
-
-```
-[post_deploy]
-1=cat {{ OPKG_DEPLOY_DIR }}/greeting/hi.txt
 ```
 
 ### rollback
