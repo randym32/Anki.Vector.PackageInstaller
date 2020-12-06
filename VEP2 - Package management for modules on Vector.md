@@ -23,7 +23,7 @@ This is a package manager that does those, and adds in a few extras:
 
 - Can set the premissions for the files.
 
-## Some Design decisions:
+## Some Design decisions
 - The tool had to be small, and not hard to deploy
 
 - The tool can’t be compiled (we don't know how)
@@ -154,3 +154,4 @@ The files are on github [https://github.com/randym32/Anki.Vector.PackageInstalle
 |----|------|
 |2020-8-30|Created|
 |2020-12-3|Added how to restart after installing a package|
+|2020-12-5|Removed unsafe features, changed how to restart after installing a package|
