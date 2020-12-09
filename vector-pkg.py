@@ -338,8 +338,8 @@ class Pkg():
         if os.path.isdir(src):
             '''skip build folder silently, but individual files can still be added.'''
             try:
-                makedirs(tgt)
-                shutil.copy(src, tgt)
+                makedirs(os.path.dirname(tgt))
+                shutil.copytree(src, tgt)
             except:
                 return False
         else:
@@ -445,7 +445,7 @@ class Pkg():
                     return False
 
         '''Permissions
-        The list items will be returned in the format, dir:owner:group mod; eg: 'apps:root:root 0444'
+        The list items will be returned in the format, dir=owner:group mod; eg: 'apps=root:root 0444'
         Parse each line accordingly.
         '''
         if pkg_manifest.has_section('permissions'):

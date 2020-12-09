@@ -74,10 +74,10 @@ apps/conf/server.conf= HTTP_PORT=80: HTTP_PORT=9090
 
 #The target paths are relative to vector-pkg.py_DEPLOY_DIR unless absolute path is specified.
 [symlinks]
-/etc/myapp/apps: apps
+/etc/myapp/apps= apps
 
 #The target paths are relative to vector-pkg.py_DEPLOY_DIR unless absolute path is specified.
-#Format: PATH: chown_input chmod_input
+#Format: PATH= chown_input chmod_input
 [permissions]
 apps= root:root 0444
 
